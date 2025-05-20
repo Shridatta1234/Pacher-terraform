@@ -1,0 +1,48 @@
+---
+- name: Configure Nginx on EC2 instance
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: Update apt package index
+      apt: update_cache=yes
+
+    - name: Install Nginx
+      apt: name=nginx state=latest
+      notify: restart nginx
+
+    - name: Ensure Nginx service is enabled and started
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+
+    - name: Create directory for static content
+      file:
+        path: /var/www/html/hello-world
+        state: directory
+        mode: 0755
+
+    - name: Create "index.html" file with "hello world" content
+      copy:
+        content: "Hello From DevOps Team. If you are able to see this massage then congratulations you have successfully created the Custom Image:)"
+        dest: /var/www/html/hello-world/index.html
+        mode: 0644
+
+    - name: Copy "index.html" to default Nginx location
+      copy:
+        src: /var/www/html/hello-world/index.html
+        dest: /var/www/html/index.html
+        mode: 0644
+        remote_src: true
+
+    - name: Enable default Nginx website
+      file:
+        src: /etc/nginx/sites-available/default
+        dest: /etc/nginx/sites-enabled/default
+        state: link
+
+  handlers:
+    - name: restart nginx
+      service: name=nginx state=restarted

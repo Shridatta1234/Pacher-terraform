@@ -1,0 +1,64 @@
+---
+- name: Configure firewall on EC2 instance
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    # Update apt package index
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    # Install UFW firewall if not present
+    - name: Install UFW firewall
+      apt:
+        name: ufw
+        state: present
+
+    # Get current UFW status
+    - name: Get UFW status
+      command: ufw status verbose
+      register: ufw_status
+      changed_when: false
+
+    # Reset UFW to default state (disabled)
+    - name: Reset UFW to clean state
+      ufw:
+        state: reset
+
+    # Set default policies
+    - name: Set default firewall policies
+      ufw:
+        default: "{{ item.direction }}"
+        policy: "{{ item.policy }}"
+      loop:
+        - { direction: 'incoming', policy: 'deny' }
+        - { direction: 'outgoing', policy: 'allow' }
+        - { direction: 'routed', policy: 'deny' }
+
+    # Configure essential rules
+    - name: Configure firewall rules
+      ufw:
+        rule: "{{ item.rule }}"
+        port: "{{ item.port }}"
+        proto: "{{ item.proto | default('tcp') }}"
+        comment: "{{ item.comment }}"
+      loop:
+        - { rule: 'allow', port: '22', proto: 'tcp', comment: 'SSH access' }
+        - { rule: 'allow', port: '80', proto: 'tcp', comment: 'HTTP' }
+        - { rule: 'allow', port: '443', proto: 'tcp', comment: 'HTTPS' }
+        - { rule: 'allow', port: '8080', proto: 'tcp', comment: 'Alternative HTTP' }
+        - { rule: 'allow', port: '53', proto: 'udp', comment: 'DNS' }
+      notify: Enable UFW
+
+    # Enable logging (medium level)
+    - name: Enable UFW logging
+      ufw:
+        logging: medium
+
+  handlers:
+    - name: Enable UFW
+      command: ufw --force enable
+      when: "'Status: inactive' in ufw_status.stdout"

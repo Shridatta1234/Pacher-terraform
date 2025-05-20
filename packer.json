@@ -1,1 +1,54 @@
-d
+{
+  "variables": {
+    "aws_access_key": "AKIAYQNJS6ZJKLFIGPOV",
+    "aws_secret_key": "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",
+    "region": "us-east-1",
+    "source_ami": "ami-084568db4383264d4",
+    "instance_type": "t2.micro",
+    "ami_name": "my-pta-ami-{{timestamp}}"
+  },
+  "builders": [
+    {
+      "type": "amazon-ebs",
+      "access_key": "{{user `aws_access_key`}}",
+      "secret_key": "{{user `aws_secret_key`}}",
+      "region": "{{user `region`}}",
+      "source_ami": "{{user `source_ami`}}",
+      "instance_type": "{{user `instance_type`}}",
+      "ssh_username": "ubuntu",
+      "ami_name": "{{user `ami_name`}}",
+      "ami_description": "Custom AMI with Nginx and Docker",
+      "tags": {
+        "Name": "{{user `ami_name`}}",
+        "Environment": "Production",
+        "BuiltBy": "Packer"
+      }
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "shell",
+      "inline": [
+        "sudo sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config",
+        "sudo systemctl restart ssh",
+        "echo 'ubuntu:April@123456789' | sudo chpasswd"
+      ]
+    },
+    {
+      "type": "ansible",
+      "playbook_file": "nginx.yml",
+      "user": "ubuntu",
+      "extra_arguments": ["--extra-vars", "ansible_ssh_common_args='-o StrictHostKeyChecking=no'"]
+    },
+    {
+      "type": "ansible",
+      "playbook_file": "docker_updated.yml",
+      "user": "ubuntu"
+    },
+    {
+      "type": "ansible",
+      "playbook_file": "firewall.yml",
+      "user": "ubuntu"
+    }
+  ]
+}

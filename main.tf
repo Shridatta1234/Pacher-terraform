@@ -50,9 +50,9 @@ data "aws_autoscaling_group" "existing_asg" {
 resource "null_resource" "update_asg_launch_template" {
   provisioner "local-exec" {
     command = <<EOT
-      aws autoscaling update-auto-scaling-group \
+      bash -c 'aws autoscaling update-auto-scaling-group \
         --auto-scaling-group-name ${data.aws_autoscaling_group.existing_asg.name} \
-        --launch-template "LaunchTemplateId=${aws_launch_template.packer_lt.id},Version=${aws_launch_template.packer_lt.latest_version}"
+        --launch-template "LaunchTemplateId=${aws_launch_template.packer_lt.id},Version=${aws_launch_template.packer_lt.latest_version}"'
     EOT
   }
 
@@ -65,10 +65,10 @@ resource "null_resource" "update_asg_launch_template" {
 resource "null_resource" "refresh_asg" {
   provisioner "local-exec" {
     command = <<EOT
-      aws autoscaling start-instance-refresh \
+      bash -c 'aws autoscaling start-instance-refresh \
         --auto-scaling-group-name ${data.aws_autoscaling_group.existing_asg.name} \
         --strategy Rolling \
-        --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 300}'
+        --preferences "{\"MinHealthyPercentage\": 50, \"InstanceWarmup\": 300}"'
     EOT
   }
 

@@ -53,23 +53,22 @@ data "aws_autoscaling_group" "existing_asg" {
 # Jenkins-compatible ASG refresh trigger
 resource "null_resource" "trigger_asg_refresh" {
   triggers = {
-    # This will change when the launch template updates
     launch_template_version = aws_launch_template.ubuntu_lt.latest_version
     timestamp               = timestamp()
   }
 
   provisioner "local-exec" {
-    interpreter = ["/bin/bash", "-c"]
-    command     = <<-EOT
-      # Check if AWS CLI is available
+    command = <<-EOT
+      #!/bin/bash
+      set -e
+      
       if ! command -v aws &> /dev/null; then
         echo "AWS CLI not found. Using environment variables for AWS credentials..."
       fi
 
-      # Execute the refresh command
       aws autoscaling start-instance-refresh \
         --auto-scaling-group-name ${data.aws_autoscaling_group.existing_asg.name} \
-        --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 300}' \
+        --preferences '{"MinHealthyPercentage":50,"InstanceWarmup":300}' \
         --strategy Rolling \
         --region us-east-1
     EOT

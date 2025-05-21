@@ -26,7 +26,7 @@
 
     - name: Create "index.html" file with "hello world" content
       copy:
-        content: "Hello From DevOps Team. If you are able to see this massage then congratulations you have successfully created the Custom Image:)"
+        content: "Updated AMI this  is proof that the changed are taking place:)"
         dest: /var/www/html/hello-world/index.html
         mode: 0644
 

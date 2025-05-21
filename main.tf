@@ -50,43 +50,35 @@ data "aws_autoscaling_group" "existing_asg" {
   name = "ubuntu-packer-asg"
 }
 
-# Trigger ASG refresh using Terraform's AWS provider (no CLI dependency)
-resource "aws_autoscaling_group" "asg_refresh" {
-  # This creates a no-op update to force refresh
-  name                = data.aws_autoscaling_group.existing_asg.name
-  max_size            = data.aws_autoscaling_group.existing_asg.max_size
-  min_size            = data.aws_autoscaling_group.existing_asg.min_size
-  desired_capacity    = data.aws_autoscaling_group.existing_asg.desired_capacity
-  vpc_zone_identifier = data.aws_autoscaling_group.existing_asg.vpc_zone_identifier
-
-  launch_template {
-    id      = aws_launch_template.ubuntu_lt.id
-    version = "$Latest"
+# Jenkins-compatible ASG refresh trigger
+resource "null_resource" "trigger_asg_refresh" {
+  triggers = {
+    # This will change when the launch template updates
+    launch_template_version = aws_launch_template.ubuntu_lt.latest_version
+    timestamp               = timestamp()
   }
 
-  # Copy all other necessary attributes from the existing ASG
-  health_check_type         = data.aws_autoscaling_group.existing_asg.health_check_type
-  health_check_grace_period = data.aws_autoscaling_group.existing_asg.health_check_grace_period
+  provisioner "local-exec" {
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<-EOT
+      # Check if AWS CLI is available
+      if ! command -v aws &> /dev/null; then
+        echo "AWS CLI not found. Using Terraform AWS provider credentials..."
+        export AWS_ACCESS_KEY_ID=${provider.aws.access_key}
+        export AWS_SECRET_ACCESS_KEY=${provider.aws.secret_key}
+        export AWS_SESSION_TOKEN=${provider.aws.token}
+      fi
 
-  dynamic "tag" {
-    for_each = data.aws_autoscaling_group.existing_asg.tags
-    content {
-      key                 = tag.value.key
-      value               = tag.value.value
-      propagate_at_launch = tag.value.propagate_at_launch
-    }
+      # Execute the refresh command
+      aws autoscaling start-instance-refresh \
+        --auto-scaling-group-name ${data.aws_autoscaling_group.existing_asg.name} \
+        --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 300}' \
+        --strategy Rolling \
+        --region us-east-1
+    EOT
   }
 
-  lifecycle {
-    ignore_changes = [
-      # Ignore changes to these attributes to prevent recreation
-      load_balancers,
-      target_group_arns,
-      suspended_processes,
-      enabled_metrics,
-      termination_policies
-    ]
-  }
+  depends_on = [aws_launch_template.ubuntu_lt]
 }
 
 # Outputs
@@ -94,6 +86,10 @@ output "new_ami_id" {
   value = data.aws_ami.my-pta-ami.id
 }
 
-output "asg_refresh_triggered" {
-  value = "ASG refresh triggered via launch template update"
+output "launch_template_version" {
+  value = aws_launch_template.ubuntu_lt.latest_version
+}
+
+output "refresh_triggered" {
+  value = "ASG instance refresh initiated"
 }

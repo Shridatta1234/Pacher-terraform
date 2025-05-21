@@ -63,10 +63,7 @@ resource "null_resource" "trigger_asg_refresh" {
     command     = <<-EOT
       # Check if AWS CLI is available
       if ! command -v aws &> /dev/null; then
-        echo "AWS CLI not found. Using Terraform AWS provider credentials..."
-        export AWS_ACCESS_KEY_ID=${provider.aws.access_key}
-        export AWS_SECRET_ACCESS_KEY=${provider.aws.secret_key}
-        export AWS_SESSION_TOKEN=${provider.aws.token}
+        echo "AWS CLI not found. Using environment variables for AWS credentials..."
       fi
 
       # Execute the refresh command
@@ -91,5 +88,5 @@ output "launch_template_version" {
 }
 
 output "refresh_triggered" {
-  value = "ASG instance refresh initiated"
+  value = "ASG instance refresh initiated - check AWS console for progress"
 }

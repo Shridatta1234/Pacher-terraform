@@ -1,4 +1,3 @@
-# Lookup the latest AMI
 data "aws_ami" "my-pta-ami" {
   most_recent = true
   owners      = ["self"]
@@ -24,7 +23,7 @@ data "aws_security_group" "web_sg" {
   name = "web-sg"
 }
 
-# Create a new launch template with the new AMI
+# Update the existing launch template with new AMI
 resource "aws_launch_template" "packer_lt" {
   name_prefix   = "packer-lt-"
   image_id      = data.aws_ami.my-pta-ami.id
@@ -46,34 +45,38 @@ data "aws_autoscaling_group" "existing_asg" {
   name = "ubuntu-packer-asg"
 }
 
-# Use null_resource to update the ASG's launch template via AWS CLI
-resource "null_resource" "update_asg_launch_template" {
-  provisioner "local-exec" {
-    command = <<EOT
-      bash -c 'aws autoscaling update-auto-scaling-group \
-        --auto-scaling-group-name ${data.aws_autoscaling_group.existing_asg.name} \
-        --launch-template "LaunchTemplateId=${aws_launch_template.packer_lt.id},Version=${aws_launch_template.packer_lt.latest_version}"'
-    EOT
+# Update the existing Auto Scaling Group to use the new launch template
+resource "aws_autoscaling_group" "packer_asg" {
+  # Use the same name to update the existing ASG
+  name = data.aws_autoscaling_group.existing_asg.name
+
+  # Use the new launch template
+  launch_template {
+    id      = aws_launch_template.packer_lt.id
+    version = "$Latest"
   }
 
-  triggers = {
-    launch_template_version = aws_launch_template.packer_lt.latest_version
-  }
-}
-
-# Optional: Trigger instance refresh after launch template update
-resource "null_resource" "refresh_asg" {
-  provisioner "local-exec" {
-    command = <<EOT
-      bash -c 'aws autoscaling start-instance-refresh \
-        --auto-scaling-group-name ${data.aws_autoscaling_group.existing_asg.name} \
-        --strategy Rolling \
-        --preferences "{\"MinHealthyPercentage\": 50, \"InstanceWarmup\": 300}"'
-    EOT
+  # Configure instance refresh preferences
+  instance_refresh {
+    strategy = "Rolling"
+    preferences {
+      min_healthy_percentage = 50
+      instance_warmup        = 300
+      auto_rollback          = true
+    }
   }
 
-  triggers = {
-    launch_template_updated = null_resource.update_asg_launch_template.id
+  # Preserve other settings that might be managed outside Terraform
+  lifecycle {
+    ignore_changes = [
+      desired_capacity,
+      load_balancers,
+      target_group_arns,
+      max_size,
+      min_size,
+      vpc_zone_identifier,
+      health_check_type
+    ]
   }
 }
 
@@ -87,5 +90,5 @@ output "launch_template_version" {
 }
 
 output "asg_refresh_status" {
-  value = "ASG refreshed with new AMI via updated launch template"
+  value = "ASG configured for rolling update with new AMI"
 }

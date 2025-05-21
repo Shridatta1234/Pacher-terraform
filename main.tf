@@ -50,23 +50,43 @@ data "aws_autoscaling_group" "existing_asg" {
   name = "ubuntu-packer-asg"
 }
 
-# Force ASG update by changing a tag (compatible with all AWS provider versions)
-resource "null_resource" "trigger_asg_refresh" {
-  triggers = {
-    # Change this value to force refresh
-    launch_template_version = aws_launch_template.ubuntu_lt.latest_version
+# Trigger ASG refresh using Terraform's AWS provider (no CLI dependency)
+resource "aws_autoscaling_group" "asg_refresh" {
+  # This creates a no-op update to force refresh
+  name                = data.aws_autoscaling_group.existing_asg.name
+  max_size            = data.aws_autoscaling_group.existing_asg.max_size
+  min_size            = data.aws_autoscaling_group.existing_asg.min_size
+  desired_capacity    = data.aws_autoscaling_group.existing_asg.desired_capacity
+  vpc_zone_identifier = data.aws_autoscaling_group.existing_asg.vpc_zone_identifier
+
+  launch_template {
+    id      = aws_launch_template.ubuntu_lt.id
+    version = "$Latest"
   }
 
-  provisioner "local-exec" {
-    command = <<EOT
-      aws autoscaling start-instance-refresh \
-        --auto-scaling-group-name ${data.aws_autoscaling_group.existing_asg.name} \
-        --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 300}' \
-        --strategy Rolling
-    EOT
+  # Copy all other necessary attributes from the existing ASG
+  health_check_type         = data.aws_autoscaling_group.existing_asg.health_check_type
+  health_check_grace_period = data.aws_autoscaling_group.existing_asg.health_check_grace_period
+
+  dynamic "tag" {
+    for_each = data.aws_autoscaling_group.existing_asg.tags
+    content {
+      key                 = tag.value.key
+      value               = tag.value.value
+      propagate_at_launch = tag.value.propagate_at_launch
+    }
   }
 
-  depends_on = [aws_launch_template.ubuntu_lt]
+  lifecycle {
+    ignore_changes = [
+      # Ignore changes to these attributes to prevent recreation
+      load_balancers,
+      target_group_arns,
+      suspended_processes,
+      enabled_metrics,
+      termination_policies
+    ]
+  }
 }
 
 # Outputs
@@ -74,10 +94,6 @@ output "new_ami_id" {
   value = data.aws_ami.my-pta-ami.id
 }
 
-output "launch_template_version" {
-  value = aws_launch_template.ubuntu_lt.latest_version
-}
-
-output "refresh_triggered" {
-  value = "ASG instance refresh initiated via AWS CLI"
+output "asg_refresh_triggered" {
+  value = "ASG refresh triggered via launch template update"
 }
